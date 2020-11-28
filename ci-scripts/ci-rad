@@ -257,9 +257,9 @@ function check_camera()
 {
     CAMERA="$(grep 'BLOBS' ${KERNEL_DIR}/arch/arm64/configs/${CONFIG})"
     if [ ${CAMERA} == "CONFIG_XIAOMI_NEW_CAMERA_BLOBS=y" ]; then
-            CAM_TYPE="newcam"
+            export CAM_TYPE="newcam"
         elif [ ${CAMERA} == "CONFIG_XIAOMI_NEW_CAMERA_BLOBS=n" ]; then
-            CAM_TYPE="oldcam"
+            export CAM_TYPE="oldcam"
     fi
 }
 

@@ -1,19 +1,20 @@
 #!/bin/bash
 
+GRP_CHAT_ID="-1001375712567"
+
 function send_kernel_logs()
 {
-    LOG=${KERNEL_DIR}/build.log
-	curl -F document=@"${LOG}" "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+	# Recorded log file path.
+    LOG=/drone/src/source/build.log
+
+	# Scrub appended secrets from file.
+	sed -i s/${TG_BOT_API}/123:xyz/g ${LOG}
+
+	curl -F document=@"${LOG}" "https://api.telegram.org/bot${TG_BOT_API}/sendDocument" \
 		-F chat_id="${GRP_CHAT_ID}" \
 		-F "disable_web_page_preview=true" \
 		-F "parse_mode=html" \
-        -F caption="Build logs for ${TYPE}-${CAM_TYPE}. @theradcolor"
-
+        -F caption="Rad Kernel Build Logs. @theradcolor"
 }
 
-function do_echo()
-{
-    echo "ECHO"
-}
-
-$1
+send_kernel_logs
