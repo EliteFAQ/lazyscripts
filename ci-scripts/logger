@@ -1,20 +1,23 @@
 #!/bin/bash
 
-GRP_CHAT_ID="-1001375712567"
+GRP_CHAT_ID="-1001487815579"
 
 function send_kernel_logs()
 {
 	# Recorded log file path.
-    LOG=/drone/src/source/build.log
+    LOG="/drone/src/source/"$(echo build-logs-rad-*.log)
+
+	# Generate MD5 Checksum
+	MD5=$(md5sum ${LOG} | cut -d' ' -f1)
 
 	# Scrub appended secrets from file.
 	sed -i s/${TG_BOT_API}/123:xyz/g ${LOG}
 
-	curl -F document=@"${LOG}" "https://api.telegram.org/bot${TG_BOT_API}/sendDocument" \
-		-F chat_id="${GRP_CHAT_ID}" \
-		-F "disable_web_page_preview=true" \
-		-F "parse_mode=html" \
-        -F caption="Rad Kernel Build Logs. @theradcolor"
+    curl -F document=@"${LOG}" "https://api.telegram.org/bot${TG_BOT_API}/sendDocument" \
+			-F chat_id="${GRP_CHAT_ID}" \
+			-F "disable_web_page_preview=true" \
+			-F "parse_mode=html" \
+            -F caption=" <b>MD5 checksum</b> • <code>${MD5}</code>"
 }
 
 send_kernel_logs

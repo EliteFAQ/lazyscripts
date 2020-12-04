@@ -15,7 +15,6 @@ git config --global user.email "theradcolor@gmail.com"
 DATE="`date +%d%m%Y-%H%M%S`"
 CHANNEL_ID="-1001487815579"
 GRP_CHAT_ID="-1001375712567"
-BOT_TOKEN="123:xyz"
 WD=$(pwd)
 OUT=${WD}"/out"
 KERNEL_DIR=${WD}
@@ -34,11 +33,11 @@ function clone_proton_clang()
 
 function clone_aosp_clang()
 {
-    git clone --depth=1 --quiet https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc
+    git clone --depth=1 --quiet https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
     git clone --depth=1 --quiet https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
     mkdir clang
     cd clang || exit
-    wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz 
+    wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r407598b.tar.gz 
     tar -xzf clang*
     cd .. || exit
 }
@@ -79,6 +78,9 @@ function set_param_gcc()
     TC=$WD/gcc64/bin/aarch64-linux-gnu-gcc
     COMPILER_STRING="$(${WD}"/gcc64/bin/aarch64-linux-gnu-gcc" --version | head -n 1)"
     export KBUILD_COMPILER_STRING="${COMPILER_STRING}"
+
+    export COMPILER_HEAD_COMMIT=$(cd gcc64 && git rev-parse HEAD)
+    export COMPILER_HEAD_COMMIT_URL="https://github.com/theradcolor/aarch64-linux-gnu/commit/${COMPILER_HEAD_COMMIT}"
 }
 
 function set_param_clang()
@@ -103,6 +105,16 @@ function set_param_clang()
     CLANG_DIR=$WD/clang
     COMPILER_STRING="$(${TC} --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' | sed 's/ *$//')"
     export KBUILD_COMPILER_STRING="${COMPILER_STRING}"
+
+    export COMPILER_HEAD_COMMIT=$(cd clang && git rev-parse HEAD)
+
+    if [ ${COMPILER} == "clang" ]; then
+       export COMPILER_HEAD_COMMIT_URL="https://github.com/theradcolor/clang/commit/${COMPILER_HEAD_COMMIT}"
+    elif [ ${COMPILER} == "proton-clang" ]; then
+       export COMPILER_HEAD_COMMIT_URL="https://github.com/kdrag0n/proton-clang/commit/${COMPILER_HEAD_COMMIT}"
+    else
+       echo "Compiler not specified"
+    fi
 }
 
 function set_param_aosp_clang()
@@ -121,6 +133,9 @@ function set_param_aosp_clang()
     CC="${ccache} $WD/clang/bin/clang"
     COMPILER_STRING="$(${CC} --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g')"
     export KBUILD_COMPILER_STRING="${COMPILER_STRING}"
+
+    #export COMPILER_HEAD_COMMIT=$(cd clang && git rev-parse HEAD)
+    #export COMPILER_HEAD_COMMIT_URL="https://github.com/theradcolor/clang/commit/${COMPILER_HEAD_COMMIT}"
 }
 
 function build_gcc()
@@ -131,9 +146,14 @@ function build_gcc()
     # Push build message to telegram
     tg_inform
 
+    # Patch kernel for LTO
+    lto_patches
+
     make O="${OUT}" "${CONFIG}"
 
     BUILD_START=$(date +"%s")
+
+    # Build
     make O="${OUT}" -j"${KBUILD_JOBS}" 2>&1| tee "${OUT}"/build.log
     
     BUILD_END=$(date +"%s")
@@ -156,10 +176,14 @@ function build_clang()
     # Push build message to telegram
     tg_inform
 
+    # Patch kernel for LTO
+    lto_patches
+
     make O="$OUT" ${CONFIG}
 
     BUILD_START=$(date +"%s")
 
+    #Build
     make -j"${KBUILD_JOBS}" O=$OUT CC="${TC}" LLVM_AR="${CLANG_DIR}/bin/llvm-ar" LLVM_NM="${CLANG_DIR}/bin/llvm-nm" LD="${CLANG_DIR}/bin/ld.lld" OBJCOPY="${CLANG_DIR}/bin/llvm-objcopy" OBJDUMP="${CLANG_DIR}/bin/llvm-objdump" STRIP="${CLANG_DIR}/bin/llvm-strip" CROSS_COMPILE="${GCC64}" CROSS_COMPILE_ARM32="${GCC32}" CLANG_TRIPLE="${GCC64_TYPE}" 2>&1| tee $OUT/build.log
 
     BUILD_END=$(date +"%s")
@@ -182,10 +206,14 @@ function build_proton_clang()
     # Push build message to telegram
     tg_inform
 
+    # Patch kernel for LTO
+    lto_patches
+
     make O="$OUT" ${CONFIG}
 
     BUILD_START=$(date +"%s")
 
+    # Build
     make -j"${KBUILD_JOBS}" O=$OUT CC="${TC}" LLVM_AR="${CLANG_DIR}/bin/llvm-ar" LLVM_NM="${CLANG_DIR}/bin/llvm-nm" LD="${CLANG_DIR}/bin/ld.lld" OBJCOPY="${CLANG_DIR}/bin/llvm-objcopy" OBJDUMP="${CLANG_DIR}/bin/llvm-objdump" STRIP="${CLANG_DIR}/bin/llvm-strip" CROSS_COMPILE="${GCC64}" CROSS_COMPILE_ARM32="${GCC32}" CLANG_TRIPLE="${GCC64_TYPE}" 2>&1| tee $OUT/build.log
 
     BUILD_END=$(date +"%s")
@@ -208,11 +236,15 @@ function build_aosp_clang()
     # Push build message to telegram
     tg_inform
 
+    # Patch kernel for LTO
+    lto_patches
+
     make O="$OUT" ${CONFIG}
 
     BUILD_START=$(date +"%s")
 
-    make -j"${KBUILD_JOBS}" O=$OUT ARCH=arm64 CC=$WD"/clang/bin/clang" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE=$WD"/gcc/bin/aarch64-linux-android-" CROSS_COMPILE_ARM32=$WD"/gcc32/bin/arm-linux-androideabi-"  2>&1| tee $OUT/build.log
+    # Build
+    make -j"${KBUILD_JOBS}" O=$OUT ARCH=arm64 CC=$WD"/clang/bin/clang" CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE=$WD"/gcc64/bin/aarch64-linux-android-" CROSS_COMPILE_ARM32=$WD"/gcc32/bin/arm-linux-androideabi-"  2>&1| tee $OUT/build.log
 
     if [ -f "${IMG}" ]; then
         BUILD_END=$(date +"%s")
@@ -228,12 +260,22 @@ function build_aosp_clang()
 function flash_zip()
 {
     echo "Now making a flashable zip of kernel with AnyKernel3"
-
+ 
+    # Check kernel type
     check_kernel_type
+
     # Clone AnyKernel3 based on EAS/HMP
     clone_anykernel
+
+    # Check camera type oldcam/newcam
     check_camera
-    export ZIPNAME=rad-ci-${TYPE}-${CAM_TYPE}-${DATE}.zip
+
+    if [ ${CI_KERNEL_TYPE} == "fakerad" ]; then
+        export ZIPNAME=fci-${TYPE}-${CAM_TYPE}-${DATE}.zip
+    else
+        export ZIPNAME=ci-${TYPE}-${CAM_TYPE}-${DATE}.zip
+    fi
+    
 
     # Checkout anykernel3 dir
     cd "${ANYKERNEL_DIR}"
@@ -242,14 +284,21 @@ function flash_zip()
     #patch_anykernel
 
     # Patch anykernel3 string
-    patch_anykernel_string
+    #patch_anykernel_string
 
     # Copy Image.gz-dtb to dir.
     cp ${OUT}/arch/arm64/boot/Image.gz-dtb ${ANYKERNEL_DIR}/
 
     # Build a flashable zip
     zip -r9 ${ZIPNAME} * -x README.md .git
-    MD5=$(md5sum rad-ci-*.zip | cut -d' ' -f1)
+
+    if [ ${CI_KERNEL_TYPE} == "fakerad" ]; then
+        MD5=$(md5sum fci-*.zip | cut -d' ' -f1)
+    else
+        MD5=$(md5sum ci-*.zip | cut -d' ' -f1)
+    fi
+    
+    # Push zip(s) to telegram
     tg_push
 }
 
@@ -284,37 +333,49 @@ function check_kernel_type()
 
 function tg_inform()
 {
-    if [ ${CONFIG} == "whyred_defconfig" ]; then
-        curl -s -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHANNEL_ID} -d "disable_web_page_preview=true" -d "parse_mode=html&text=<b>⚒️ New CI build has been triggered"'!'" ⚒️</b>%0A%0A<b>Linux version tag • </b><code>v$(make kernelversion)</code>%0A<b>Git branch • </b><code>$(git rev-parse --abbrev-ref HEAD)</code>%0A<b>Commit head • </b><code>$(git log --pretty=format:'%h : %s' -1)</code>%0A<b>Compiler • </b><code>$(${TC} --version | head -n 1)</code>%0A<b>At • </b><code>$(TZ=Asia/Kolkata date)</code>%0A"
+    KERNEL_COMMIT="$(git rev-parse HEAD)"
+    KERNEL_URL="https://github.com/theradcolor/android_kernel_xiaomi_whyred/commit/"
+    SCRIPT_COMMIT="$(cd lazyscripts && git log -n 1 --pretty=format:%H -- ci-scripts/ci-rad)"
+    SCRIPT_URL="https://github.com/theradcolor/lazyscripts/commit/"
+
+    if [ ${COMPILER} == "gnu-gcc" ]; then
+        curl -s -X POST https://api.telegram.org/bot${TG_BOT_API}/sendMessage?chat_id=${CHANNEL_ID} -d "disable_web_page_preview=true" -d "parse_mode=markdownV2&text=⚒️ *Building with* [*$(echo ${KERNEL_COMMIT} | cut -c1-8)*](${KERNEL_URL}${KERNEL_COMMIT})/[*$(echo ${SCRIPT_COMMIT} | cut -c1-8)*](${SCRIPT_URL}${SCRIPT_COMMIT}) ⚒️"
+    fi
+    if [ ${CONFIG} == "fakerad_defconfig" ]; then
+        curl -s -X POST https://api.telegram.org/bot${TG_BOT_API}/sendMessage?chat_id=${CHANNEL_ID} -d "disable_web_page_preview=true" -d "parse_mode=markdownV2&text=⚒️ *Building with* [*$(echo ${KERNEL_COMMIT} | cut -c1-8)*](${KERNEL_URL}${KERNEL_COMMIT})/[*$(echo ${SCRIPT_COMMIT} | cut -c1-8)*](${SCRIPT_URL}${SCRIPT_COMMIT}) ⚒️"
     fi
 }
 
 function tg_push()
 {
-    ZIP="${ANYKERNEL_DIR}"/$(echo rad-ci-*.zip)
-    curl -F document=@"${ZIP}" "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
-			-F chat_id="${CHANNEL_ID}" \
-			-F "disable_web_page_preview=true" \
-			-F "parse_mode=html" \
-            -F caption="⭕️ Build took $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) second(s) | <b>MD5 checksum</b> • <code>${MD5}</code>"
+    if [ ${CI_KERNEL_TYPE} == "fakerad" ]; then
+        ZIP="${ANYKERNEL_DIR}"/$(echo fci-*.zip)
+    else
+        ZIP="${ANYKERNEL_DIR}"/$(echo ci-*.zip)
+    fi
     
-    curl -F document=@"${ZIP}" "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+    curl -F document=@"${ZIP}" "https://api.telegram.org/bot${TG_BOT_API}/sendDocument" \
+			-F chat_id="${CHANNEL_ID}" \
+			-F "disable_web_page_preview=false" \
+			-F "parse_mode=markdown" \
+            -F caption="⭕️ Build took $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) second(s) | *MD5 checksum* • \`${MD5}\` | *Compiler* • [${COMPILER_STRING}](${COMPILER_HEAD_COMMIT_URL})"
+    
+    curl -F document=@"${ZIP}" "https://api.telegram.org/bot${TG_BOT_API}/sendDocument" \
 			-F chat_id="${GRP_CHAT_ID}" \
-			-F "disable_web_page_preview=true" \
-			-F "parse_mode=html" \
-            -F caption="⭕️ Build took $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) second(s) | <b>MD5 checksum</b> • <code>${MD5}</code>"
-
+			-F "disable_web_page_preview=false" \
+			-F "parse_mode=markdown" \
+            -F caption="⭕️ Build took $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) second(s) | *MD5 checksum* • \`${MD5}\` | *Compiler* • [${COMPILER_STRING}](${COMPILER_HEAD_COMMIT_URL})"
 }
 
 function tg_push_error()
 {
-	curl -s -X POST https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHANNEL_ID} -d "disable_web_page_preview=true" -d "parse_mode=html&text=<b>❌ Build failed after $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) second(s).</b>"
+	curl -s -X POST https://api.telegram.org/bot${TG_BOT_API}/sendMessage?chat_id=${GRP_CHAT_ID} -d "disable_web_page_preview=true" -d "parse_mode=html&text=<b>❌ Build failed after $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) second(s).</b>"
 }
 
 function tg_push_log()
 {
    	LOG=${KERNEL_DIR}/build.log
-	curl -F document=@"${LOG}" "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+	curl -F document=@"${LOG}" "https://api.telegram.org/bot${TG_BOT_API}/sendDocument" \
 			-F chat_id="${GRP_CHAT_ID}" \
 			-F "disable_web_page_preview=true" \
 			-F "parse_mode=html" \
@@ -353,6 +414,40 @@ function patch_anykernel_string()
     fi
 }
 
+function lto_patches()
+{
+    if [ ${LTO} == "true" ]; then
+        if [ ${COMPILER} == "gnu-gcc" ]; then
+           # GCC LTO patches for kernel
+           curl https://raw.githubusercontent.com/theradcolor/patches/master/rad-kernel-gcc-lto-patch.patch | git am
+           rm -rf *.patch
+        elif [ ${COMPILER} == "proton-clang" ]; then
+           # Clang LTO patches for kernel
+           curl https://raw.githubusercontent.com/theradcolor/patches/master/rad-kernel-clang-lto-patch.patch | git am
+           rm -rf *.patch
+        else
+           echo "Compiler not specified"
+        fi
+        
+        # Override CONFIG if we have parsed CI_KERNEL_TYPE arg from pipeline
+        if [ ${CI_KERNEL_TYPE} == "fakerad" ]; then
+            CONFIG="fakerad_defconfig"
+            # After patching kernel for LTO, enable it in fakerad_defconfig
+            if [ ${COMPILER} == "gnu-gcc" ]; then
+                curl https://raw.githubusercontent.com/theradcolor/patches/master/fakerad-gcc-lto-patch.patch | git am
+                rm -rf *.patch
+            elif [ ${COMPILER} == "proton-clang" ]; then
+                curl https://raw.githubusercontent.com/theradcolor/patches/master/fakerad-clang-lto-patch.patch | git am
+                rm -rf *.patch
+            else
+                echo "Compiler not specified, skipping LTO enabling patches!"
+            fi
+        fi
+    else
+        echo "Skipping LTO patches!"
+    fi
+}
+
 for i in "$@"
 do
 case $i in
@@ -362,6 +457,10 @@ case $i in
     ;;
     --newcam)
     CONFIG="whyred-newcam_defconfig"
+    shift
+    ;;
+    --fakerad)
+    CONFIG="fakerad_defconfig"
     shift
     ;;
     --gcc)
@@ -388,6 +487,10 @@ case $i in
     COMPILER="proton-clang"
     shift
     ;;
+    --lto)
+    LTO="true"
+    shift
+    ;;
     *)
     # unknown option
     echo "Unknown option(s)"
@@ -397,17 +500,55 @@ esac
 done
 
 # Start Build (build_clang/build_aosp_clang/build_proton_clang/build_gcc)
-if [ ${COMPILER} == "gnu-gcc" ]; then
-    build_gcc
-elif [ ${COMPILER} == "clang" ]; then
-    build_clang
-elif [ ${COMPILER} == "aosp-clang" ]; then
-    build_aosp_clang
-elif [ ${COMPILER} == "proton-clang" ]; then
-    build_proton_clang
+function build_default()
+{
+    if [ ${COMPILER} == "gnu-gcc" ]; then
+       build_gcc
+    elif [ ${COMPILER} == "clang" ]; then
+       build_clang
+    elif [ ${COMPILER} == "aosp-clang" ]; then
+       build_aosp_clang
+    elif [ ${COMPILER} == "proton-clang" ]; then
+       build_proton_clang
+    else
+       echo "Compiler not specified"
+    fi
+}
+
+# Cancel builds if detects newcam or fakerad
+# As we will be only building via custom trigger event
+if [ "${DRONE_BUILD_EVENT}" -eq "push" ]; then
+    if [ "${DRONE_STEP_NAME}"="gnu-gcc newcam" ]; then
+       exit
+    fi
+elif [ "${DRONE_BUILD_EVENT}" -eq "push" ]; then
+    if [ "${DRONE_STEP_NAME}" -eq "llvm-clang newcam" ]; then
+       exit
+    fi
+elif [ "${DRONE_BUILD_EVENT}" -eq "push" ]; then
+    if [ "${DRONE_STEP_NAME}" -eq "aosp-clang newcam" ]; then
+       exit
+    fi
+elif [ "${DRONE_BUILD_EVENT}" -eq "push" ]; then
+    if [ "${DRONE_STEP_NAME}" -eq "fakerad oldcam" ]; then
+       exit
+    fi
 else
-    echo "Compiler not specified"
+    echo "No YaY!"
 fi
 
-# Post build logs
-# tg_push_log
+# Logic for fakerad build
+if [[ "${DRONE_BUILD_EVENT}" -eq "custom" && "${DRONE_STEP_NAME}" -eq "fakerad oldcam" ]]; then
+    if [ "${CI_KERNEL_TYPE}" -eq "fakerad" ]; then
+       CONFIG="fakerad_defconfig" && build_fakerad
+    fi
+fi
+
+# Logic for newcam builds
+if [[ "${DRONE_BUILD_EVENT}" -eq "custom" && "${CAM_TYPE}" -eq "newcam" ]]; then
+    CONFIG="whyred-newcam_defconfig" && build_default
+else
+    build_default
+fi
+
+echo "YaY!"
