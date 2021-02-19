@@ -9,12 +9,12 @@
 export TZ=Asia/Kolkata
 
 # Configure git
-git config --global user.name "Shashank Baghel"
-git config --global user.email "theradcolor@gmail.com"
+git config --global user.name "Elite FAQ"
+git config --global user.email "ruvalbuena@gmail.com"
 
 DATE="`date +%d%m%Y-%H%M%S`"
-CHANNEL_ID="-1001487815579"
-GRP_CHAT_ID="-1001375712567"
+CHANNEL_ID=""
+GRP_CHAT_ID=""
 WD=$(pwd)
 OUT=${WD}"/out"
 KERNEL_DIR=${WD}
@@ -71,7 +71,7 @@ function set_param_gcc()
     export SUBARCH=arm64
 
     # Kbuild host and user
-    export KBUILD_BUILD_USER="shashank"
+    export KBUILD_BUILD_USER="EliteFAQ"
     export KBUILD_BUILD_HOST="archlinux"
     export KBUILD_JOBS="$((`grep -c '^processor' /proc/cpuinfo` * 2))"
 
@@ -91,7 +91,7 @@ function set_param_clang()
     export SUBARCH=arm64
 
     # Kbuild host and user
-    export KBUILD_BUILD_USER="shashank"
+    export KBUILD_BUILD_USER="EliteFAQ"
     export KBUILD_BUILD_HOST="archlinux"
     export KBUILD_JOBS="$((`grep -c '^processor' /proc/cpuinfo` * 2))"
 
@@ -125,7 +125,7 @@ function set_param_aosp_clang()
     export SUBARCH=arm64
 
     # Kbuild host and user
-    export KBUILD_BUILD_USER="shashank"
+    export KBUILD_BUILD_USER="EliteFAQ"
     export KBUILD_BUILD_HOST="archlinux"
     export KBUILD_JOBS="$((`grep -c '^processor' /proc/cpuinfo` * 2))"
 
